@@ -7,12 +7,15 @@ import (
 
 	"ancient-battlefield/pkg/config"
 	"ancient-battlefield/pkg/handlers"
+	"ancient-battlefield/pkg/metrics"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "配置文件路径")
 	port := flag.String("port", "8080", "服务端口")
+	pprofPort := flag.String("pprof-port", "6060", "pprof调试端口")
+	metricsPort := flag.String("metrics-port", "9090", "Prometheus指标端口")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -23,9 +26,15 @@ func main() {
 	log.Printf("配置已加载: Bootstrap=%d, LR lr=%.6f, 聚类数=%d",
 		cfg.Bootstrap.Runs, cfg.LogisticRegression.LearningRate, cfg.Clustering.DefaultK)
 
+	metrics.StartPprof(*pprofPort)
+	metrics.StartMetricsServer(*metricsPort)
+
 	h := handlers.New(cfg)
 
-	r := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(metrics.GinMiddleware())
 	r.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -55,7 +64,7 @@ func main() {
 		api.GET("/statistics", h.GetStatistics)
 	}
 
-	log.Printf("服务启动于 :%s", *port)
+	log.Printf("服务启动于 :%s (pprof=:%s, metrics=:%s)", *port, *pprofPort, *metricsPort)
 	if err := r.Run(":" + *port); err != nil {
 		log.Fatal(err)
 	}
