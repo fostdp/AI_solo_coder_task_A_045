@@ -248,39 +248,56 @@ func GetAccessibility(c *gin.Context) {
 
 func GetSiteSelectionFactors(c *gin.Context) {
 	loadData()
-	nonBattlefields := make([][3]float64, 400)
-	for i := 0; i < 400; i++ {
-		lng := 73.0 + rand.Float64()*(135.0-73.0)
-		lat := 18.0 + rand.Float64()*(54.0-18.0)
-		elev := 100.0 + math.Abs(math.Sin(lng*0.1)+math.Cos(lat*0.1))*1000
-		nonBattlefields[i] = [3]float64{elev, 15.0 + rand.Float64()*35, 20.0 + rand.Float64()*60}
-	}
-	result := analysis.TrainLogisticRegression(data.Battlefields, nonBattlefields)
+	backgroundType := c.DefaultQuery("background", "target_group")
+	bootstrapRuns, _ := strconv.Atoi(c.DefaultQuery("bootstrap", "100"))
+
+	result := analysis.TrainEnhancedLogisticRegression(data.Battlefields, backgroundType, bootstrapRuns)
 
 	factors := make([]models.SiteSelectionFactor, 3)
 	for i, name := range result.FactorNames {
 		factors[i] = models.SiteSelectionFactor{
-			ID:           i + 1,
-			FactorName:   name,
-			Contribution: result.Contributions[i],
-			PValue:       result.PValues[i],
-			OddsRatio:    result.OddsRatios[i],
-			Method:       "逻辑回归",
+			ID:             i + 1,
+			FactorName:     name,
+			Contribution:   result.Contributions[i],
+			PValue:         result.PValues[i],
+			OddsRatio:      result.OddsRatios[i],
+			Method:         "逻辑回归 + Bootstrap",
+			StdErr:         result.StdErrs[i],
+			CI95Lower:      result.CI95Lowers[i],
+			CI95Upper:      result.CI95Uppers[i],
+			Significance:   result.PValues[i] < 0.05,
+			StabilityScore: result.Stability[i],
 		}
 	}
-	c.JSON(http.StatusOK, factors)
+	c.JSON(http.StatusOK, gin.H{
+		"factors":        factors,
+		"model_metrics": gin.H{
+			"auc":             result.AUC,
+			"accuracy":        result.Accuracy,
+			"precision":       result.Precision,
+			"recall":          result.Recall,
+			"f1_score":        result.F1Score,
+			"bootstrap_runs":  result.BootstrapRuns,
+			"background_type": result.BackgroundType,
+			"num_background":  result.NumBackground,
+		},
+	})
+}
+
+func GetEnhancedLR(c *gin.Context) {
+	loadData()
+	backgroundType := c.DefaultQuery("background", "target_group")
+	bootstrapRuns, _ := strconv.Atoi(c.DefaultQuery("bootstrap", "100"))
+	result := analysis.TrainEnhancedLogisticRegression(data.Battlefields, backgroundType, bootstrapRuns)
+	c.JSON(http.StatusOK, result)
 }
 
 func GetHighProbAreas(c *gin.Context) {
 	loadData()
-	nonBattlefields := make([][3]float64, 400)
-	for i := 0; i < 400; i++ {
-		lng := 73.0 + rand.Float64()*(135.0-73.0)
-		lat := 18.0 + rand.Float64()*(54.0-18.0)
-		elev := 100.0 + math.Abs(math.Sin(lng*0.1)+math.Cos(lat*0.1))*1000
-		nonBattlefields[i] = [3]float64{elev, 15.0 + rand.Float64()*35, 20.0 + rand.Float64()*60}
-	}
-	lrResult := analysis.TrainLogisticRegression(data.Battlefields, nonBattlefields)
+	backgroundType := c.DefaultQuery("background", "target_group")
+	bootstrapRuns, _ := strconv.Atoi(c.DefaultQuery("bootstrap", "50"))
+
+	lrResult := analysis.TrainEnhancedLogisticRegression(data.Battlefields, backgroundType, bootstrapRuns)
 
 	flat := make([][3]float64, 0)
 	for _, row := range data.DEMGrid {
@@ -298,8 +315,18 @@ func GetHighProbAreas(c *gin.Context) {
 func GetMilitaryRegions(c *gin.Context) {
 	loadData()
 	numRegions, _ := strconv.Atoi(c.DefaultQuery("num_regions", "8"))
-	regions := analysis.GenerateMilitaryRegions(data.Battlefields, numRegions)
-	c.JSON(http.StatusOK, regions)
+	regions, fcmResult := analysis.GenerateMilitaryRegionsFCM(data.Battlefields, numRegions)
+	c.JSON(http.StatusOK, gin.H{
+		"regions":      regions,
+		"fcm_result":   fcmResult,
+	})
+}
+
+func GetFuzzyCluster(c *gin.Context) {
+	loadData()
+	numRegions, _ := strconv.Atoi(c.DefaultQuery("num_regions", "8"))
+	_, fcmResult := analysis.GenerateMilitaryRegionsFCM(data.Battlefields, numRegions)
+	c.JSON(http.StatusOK, fcmResult)
 }
 
 func GetStats(c *gin.Context) {

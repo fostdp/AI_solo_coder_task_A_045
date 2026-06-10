@@ -20,13 +20,17 @@ const App = (function() {
         showHighProb: false,
         filterEra: '',
         filterTerrain: '',
-        minTroops: 0
+        minTroops: 0,
+        useOffscreen: true,
+        backgroundType: 'target_group',
+        bootstrapRuns: 100
     };
 
     async function init() {
         initMap();
         initCanvas();
         bindEvents();
+        initPerfInfo();
         await AppData.loadAll();
         renderEraLegend();
         renderTroopsLegend();
@@ -36,6 +40,17 @@ const App = (function() {
         renderStats();
         loadFactorAnalysis();
         requestAnimationFrame(renderCanvas);
+    }
+
+    function initPerfInfo() {
+        const perfStatus = document.getElementById('perf-status');
+        if (Charts.isOffscreenCanvasSupported()) {
+            perfStatus.innerHTML = '渲染模式: <span class="supported">OffscreenCanvas (硬件加速)</span>';
+        } else {
+            perfStatus.innerHTML = '渲染模式: <span class="unsupported">标准Canvas (兼容模式)</span>';
+            document.getElementById('toggle-offscreen').checked = false;
+            state.useOffscreen = false;
+        }
     }
 
     function initMap() {
@@ -128,6 +143,22 @@ const App = (function() {
         document.getElementById('panel-close').addEventListener('click', closePanel);
         document.getElementById('btn-analyze').addEventListener('click', analyzeRegions);
         document.getElementById('btn-highprob').addEventListener('click', analyzeHighProb);
+
+        document.getElementById('background-type').addEventListener('change', (e) => {
+            state.backgroundType = e.target.value;
+            loadFactorAnalysis();
+        });
+        document.getElementById('bootstrap-runs').addEventListener('change', (e) => {
+            state.bootstrapRuns = parseInt(e.target.value) || 100;
+            loadFactorAnalysis();
+        });
+        document.getElementById('toggle-offscreen').addEventListener('change', (e) => {
+            state.useOffscreen = e.target.checked;
+            Charts.clearOffscreenCache();
+            if (selectedBattlefield) {
+                showDetailPanel(selectedBattlefield);
+            }
+        });
     }
 
     function applyFilters() {
@@ -272,9 +303,9 @@ const App = (function() {
                 `/api/terrain_profile?start_lng=${bf.lng - 1}&start_lat=${bf.lat}&end_lng=${bf.lng + 1}&end_lat=${bf.lat}&num_points=50`,
                 () => generateMockProfile(bf)
             );
-            Charts.drawTerrainProfile(document.getElementById('profile-canvas'), profile);
+            Charts.drawTerrainProfile(document.getElementById('profile-canvas'), profile, { useOffscreen: state.useOffscreen });
         } catch (e) {
-            Charts.drawTerrainProfile(document.getElementById('profile-canvas'), generateMockProfile(bf));
+            Charts.drawTerrainProfile(document.getElementById('profile-canvas'), generateMockProfile(bf), { useOffscreen: state.useOffscreen });
         }
 
         try {
@@ -329,43 +360,95 @@ const App = (function() {
 
     async function loadFactorAnalysis() {
         try {
-            const factors = await fetchWithFallback(
-                '/api/site_selection_factors',
-                () => [
-                    { factor_name: '地形高程', contribution: 0.38, p_value: 0.012, odds_ratio: 1.004 },
-                    { factor_name: '交通可达性', contribution: 0.35, p_value: 0.023, odds_ratio: 0.945 },
-                    { factor_name: '水源距离', contribution: 0.27, p_value: 0.045, odds_ratio: 0.972 }
-                ]
+            const bg = state.backgroundType;
+            const bs = state.bootstrapRuns;
+            const data = await fetchWithFallback(
+                `/api/site_selection_factors?background=${bg}&bootstrap=${bs}`,
+                () => generateMockEnhancedFactors(bg, bs)
             );
+            let factors, modelMetrics;
+            if (data.factors && data.model_metrics) {
+                factors = data.factors;
+                modelMetrics = data.model_metrics;
+            } else {
+                factors = data;
+                modelMetrics = null;
+            }
             AppData.setFactors(factors);
+            if (modelMetrics) {
+                renderModelMetrics(modelMetrics);
+                document.getElementById('model-metrics').classList.remove('hidden');
+            }
             renderFactorAnalysis(factors);
         } catch (e) {
-            const fallback = [
-                { factor_name: '地形高程', contribution: 0.38, p_value: 0.012, odds_ratio: 1.004 },
-                { factor_name: '交通可达性', contribution: 0.35, p_value: 0.023, odds_ratio: 0.945 },
-                { factor_name: '水源距离', contribution: 0.27, p_value: 0.045, odds_ratio: 0.972 }
-            ];
-            renderFactorAnalysis(fallback);
+            const fallback = generateMockEnhancedFactors(state.backgroundType, state.bootstrapRuns);
+            AppData.setFactors(fallback.factors);
+            renderModelMetrics(fallback.model_metrics);
+            document.getElementById('model-metrics').classList.remove('hidden');
+            renderFactorAnalysis(fallback.factors);
         }
+    }
+
+    function renderModelMetrics(metrics) {
+        document.getElementById('metric-auc').textContent = (metrics.auc || 0).toFixed(3);
+        document.getElementById('metric-accuracy').textContent = ((metrics.accuracy || 0) * 100).toFixed(1) + '%';
+        document.getElementById('metric-f1').textContent = (metrics.f1 || 0).toFixed(3);
+    }
+
+    function generateMockEnhancedFactors(bg, bs) {
+        return {
+            factors: [
+                { factor_name: '地形高程', contribution: 0.38, p_value: 0.012, odds_ratio: 1.004, stability_score: 0.92, ci95_lower: 1.001, ci95_upper: 1.007, std_err: 0.0015 },
+                { factor_name: '交通可达性', contribution: 0.35, p_value: 0.023, odds_ratio: 0.945, stability_score: 0.88, ci95_lower: 0.902, ci95_upper: 0.988, std_err: 0.021 },
+                { factor_name: '水源距离', contribution: 0.27, p_value: 0.045, odds_ratio: 0.972, stability_score: 0.76, ci95_lower: 0.948, ci95_upper: 0.996, std_err: 0.012 }
+            ],
+            model_metrics: {
+                auc: 0.842,
+                accuracy: 0.785,
+                precision: 0.762,
+                recall: 0.814,
+                f1: 0.787,
+                background_type: bg,
+                bootstrap_runs: bs
+            }
+        };
     }
 
     function renderFactorAnalysis(factors) {
         const container = document.getElementById('factor-analysis');
-        container.innerHTML = factors.map(f => `
+        container.innerHTML = factors.map(f => {
+            const stability = f.stability_score || 0;
+            const stabilityClass = stability >= 0.85 ? 'stability-high' : (stability >= 0.7 ? 'stability-medium' : 'stability-low');
+            const ci = f.ci95_upper && f.ci95_lower ? `
+                <div class="ci-bar">
+                    <div class="ci-tick" style="left:0"></div>
+                    <div class="ci-tick" style="left:100%"></div>
+                    <div class="ci-bar-fill" style="left:25%;right:25%"></div>
+                </div>
+                <div class="factor-meta" style="font-size:10px;margin-top:2px;color:#8b8b7a">
+                    <span>95% CI: [${f.ci95_lower.toFixed(3)}, ${f.ci95_upper.toFixed(3)}]</span>
+                </div>
+            ` : '';
+            const stabilityBadge = f.stability_score ? `
+                <span class="stability-indicator ${stabilityClass}" title="Bootstrap稳定性: ${(stability * 100).toFixed(0)}%"></span>
+            ` : '';
+            return `
             <div class="factor-item">
                 <div class="factor-name">
-                    <span>${f.factor_name}</span>
+                    <span>${stabilityBadge}${f.factor_name}</span>
                     <span style="color:#d4af37">${(f.contribution * 100).toFixed(1)}%</span>
                 </div>
                 <div class="factor-bar">
                     <div class="factor-bar-fill" style="width:${f.contribution * 100}%"></div>
                 </div>
+                ${ci}
                 <div class="factor-meta">
                     <span>P值: ${f.p_value.toFixed(3)}</span>
                     <span>OR: ${f.odds_ratio.toFixed(3)}</span>
+                    ${f.stability_score ? `<span style="color:#${stability >= 0.85 ? '27ae60' : (stability >= 0.7 ? 'f1c40f' : 'e74c3c')}">稳定: ${(stability * 100).toFixed(0)}%</span>` : ''}
                 </div>
             </div>
-        `).join('');
+        `}).join('');
     }
 
     async function analyzeRegions() {
@@ -374,12 +457,26 @@ const App = (function() {
         btn.disabled = true;
 
         try {
-            const regions = await fetchWithFallback(
-                '/api/military_regions?num_regions=8',
-                () => generateMockRegions()
+            const data = await fetchWithFallback(
+                '/api/military_regions?num_regions=8&fuzzy=true',
+                () => generateMockRegionsFCM()
             );
+            let regions, fcmResult;
+            if (data.regions && data.fcm_result) {
+                regions = data.regions;
+                fcmResult = data.fcm_result;
+            } else {
+                regions = data;
+                fcmResult = null;
+            }
             AppData.setRegions(regions);
-            drawRegions(regions);
+            if (fcmResult) {
+                renderClusterQuality(fcmResult);
+                document.getElementById('cluster-uncertainty').classList.remove('hidden');
+                drawRegionsWithUncertainty(regions, fcmResult);
+            } else {
+                drawRegions(regions);
+            }
             if (!map.hasLayer(regionLayer)) {
                 regionLayer.addTo(map);
             }
@@ -388,6 +485,98 @@ const App = (function() {
             btn.textContent = '运行军事地理分区';
             btn.disabled = false;
         }
+    }
+
+    function renderClusterQuality(fcm) {
+        document.getElementById('metric-pc').textContent = (fcm.partition_coef || 0).toFixed(3);
+        document.getElementById('metric-pe').textContent = (fcm.partition_entropy || 0).toFixed(3);
+        const avgUnc = fcm.uncertainties ? fcm.uncertainties.reduce((a, b) => a + b, 0) / fcm.uncertainties.length : 0;
+        document.getElementById('metric-avg-uncertainty').textContent = (avgUnc * 100).toFixed(1) + '%';
+    }
+
+    function generateMockRegionsFCM() {
+        const mockRegions = generateMockRegions();
+        const n = mockRegions.length;
+        const uncertainties = new Array(n).fill(0).map(() => 0.05 + Math.random() * 0.25);
+        return {
+            regions: mockRegions.map((r, i) => ({
+                ...r,
+                avg_membership: 0.75 + Math.random() * 0.2,
+                uncertainty: uncertainties[i]
+            })),
+            fcm_result: {
+                partition_coef: 0.68 + Math.random() * 0.25,
+                partition_entropy: 0.15 + Math.random() * 0.3,
+                uncertainties: uncertainties,
+                membership_matrix: new Array(n).fill(0).map(() =>
+                    new Array(8).fill(0).map(() => Math.random()).map((v, i, arr) => v / arr.reduce((a, b) => a + b, 0))
+                )
+            }
+        };
+    }
+
+    function drawRegionsWithUncertainty(regions, fcm) {
+        regionLayer.clearLayers();
+        const colors = ['rgba(231, 76, 60, 0.2)', 'rgba(52, 152, 219, 0.2)', 'rgba(46, 204, 113, 0.2)',
+                        'rgba(155, 89, 182, 0.2)', 'rgba(241, 196, 15, 0.2)', 'rgba(230, 126, 34, 0.2)',
+                        'rgba(26, 188, 156, 0.2)', 'rgba(211, 84, 0, 0.2)'];
+        const borderColors = ['rgba(231, 76, 60, 0.8)', 'rgba(52, 152, 219, 0.8)', 'rgba(46, 204, 113, 0.8)',
+                              'rgba(155, 89, 182, 0.8)', 'rgba(241, 196, 15, 0.8)', 'rgba(230, 126, 34, 0.8)',
+                              'rgba(26, 188, 156, 0.8)', 'rgba(211, 84, 0, 0.8)'];
+
+        regions.forEach((region, idx) => {
+            if (!region.coords || !region.coords[0]) return;
+            const latlngs = region.coords[0].map(c => [c[1], c[0]]);
+            const uncertainty = region.uncertainty || (fcm.uncertainties ? fcm.uncertainties[idx] : 0.1);
+            const baseOpacity = Math.max(0.15, 0.45 - uncertainty * 0.8);
+            const dashArray = uncertainty > 0.25 ? '8, 4' : (uncertainty > 0.15 ? '4, 4' : null);
+
+            L.polygon(latlngs, {
+                color: borderColors[idx % borderColors.length],
+                weight: 2,
+                fillColor: colors[idx % colors.length],
+                fillOpacity: baseOpacity,
+                dashArray: dashArray,
+                opacity: Math.max(0.4, 0.8 - uncertainty * 0.8)
+            }).bindPopup(`
+                <strong>${region.region_name}</strong><br>
+                编码: ${region.region_code}<br>
+                战役数量: ${region.battle_count}<br>
+                战场密度: ${region.avg_density.toFixed(2)}<br>
+                主导地形: ${region.dominant_terrain}<br>
+                <div style="margin-top:4px;padding-top:4px;border-top:1px solid #333">
+                    聚类不确定性: <span class="uncertainty-badge ${uncertainty < 0.15 ? 'uncertainty-low' : (uncertainty < 0.25 ? 'uncertainty-medium' : 'uncertainty-high')}">${(uncertainty * 100).toFixed(1)}%</span><br>
+                    平均隶属度: ${((region.avg_membership || 0.8) * 100).toFixed(1)}%
+                </div>
+            `).addTo(regionLayer);
+
+            if (uncertainty > 0.15) {
+                const center = latlngs.reduce((acc, c) => [acc[0] + c[0], acc[1] + c[1]], [0, 0]);
+                center[0] /= latlngs.length;
+                center[1] /= latlngs.length;
+                const ringRadius = 12000 + uncertainty * 40000;
+                L.circle(center, {
+                    radius: ringRadius,
+                    color: 'rgba(231, 76, 60, ' + (0.2 + uncertainty * 0.5) + ')',
+                    weight: 1,
+                    fillColor: 'rgba(231, 76, 60, ' + (0.05 + uncertainty * 0.15) + ')',
+                    fillOpacity: 0.3,
+                    interactive: false,
+                    className: 'uncertainty-layer'
+                }).addTo(regionLayer);
+            }
+
+            const center = latlngs.reduce((acc, c) => [acc[0] + c[0], acc[1] + c[1]], [0, 0]);
+            center[0] /= latlngs.length;
+            center[1] /= latlngs.length;
+            L.marker(center, {
+                icon: L.divIcon({
+                    html: `<div style="background:rgba(0,0,0,0.7);color:#f4e5b0;padding:2px 6px;border-radius:3px;font-size:10px;border:1px solid ${borderColors[idx % borderColors.length]};white-space:nowrap">${region.region_name}</div>`,
+                    className: '',
+                    iconSize: [80, 18]
+                })
+            }).addTo(regionLayer);
+        });
     }
 
     function drawRegions(regions) {

@@ -112,12 +112,68 @@
 
             <div class="sidebar-section">
                 <h3>选址影响因素</h3>
+                <div class="model-config">
+                    <label>
+                        <span>背景点选择:</span>
+                        <select id="background-type">
+                            <option value="target_group">Target-group（推荐）</option>
+                            <option value="random">随机抽样</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Bootstrap次数:</span>
+                        <select id="bootstrap-runs">
+                            <option value="50">50次</option>
+                            <option value="100" selected>100次</option>
+                            <option value="200">200次</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="model-metrics" class="model-metrics hidden">
+                    <div class="metric-row">
+                        <span>AUC:</span>
+                        <span id="metric-auc">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>准确率:</span>
+                        <span id="metric-accuracy">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>F1分数:</span>
+                        <span id="metric-f1">-</span>
+                    </div>
+                </div>
                 <div id="factor-analysis" class="factor-list">
                     <div class="loading">分析中...</div>
                 </div>
             </div>
 
             <div class="sidebar-section">
+                <label class="toggle-label">
+                    <input type="checkbox" id="toggle-offscreen" checked />
+                    <span>启用Canvas离屏渲染</span>
+                </label>
+                <div class="perf-info">
+                    <span id="perf-status">渲染模式: 检测中...</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div id="cluster-uncertainty" class="cluster-uncertainty hidden">
+                    <h4>聚类质量指标</h4>
+                    <div class="metric-row">
+                        <span>划分系数(PC):</span>
+                        <span id="metric-pc">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>划分熵(PE):</span>
+                        <span id="metric-pe">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>平均不确定性:</span>
+                        <span id="metric-avg-uncertainty">-</span>
+                    </div>
+                </div>
                 <button id="btn-analyze" class="btn-primary">运行军事地理分区</button>
                 <button id="btn-highprob" class="btn-secondary">分析高概率区域</button>
             </div>

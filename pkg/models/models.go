@@ -44,6 +44,22 @@ type MilitaryRegion struct {
 	AvgDensity     float64   `json:"avg_density"`
 	DominantTerrain string   `json:"dominant_terrain"`
 	Coords         [][][2]float64 `json:"coords"`
+	AvgMembership  float64   `json:"avg_membership"`
+	Uncertainty   float64   `json:"uncertainty"`
+	PartitionCoef float64   `json:"partition_coef"`
+	Entropy       float64   `json:"entropy"`
+}
+
+type FuzzyClusterResult struct {
+	Centroids     [][]float64   `json:"centroids"`
+	Membership    [][]float64   `json:"membership"`
+	Labels        []int         `json:"labels"`
+	PartitionCoef float64       `json:"partition_coef"`
+	PartitionEnt  float64       `json:"partition_entropy"`
+	AvgUncertainty float64      `json:"avg_uncertainty"`
+	Fuzzifier     float64       `json:"fuzzifier"`
+	PointUncertainty []float64  `json:"point_uncertainty"`
+	PointMembership []float64   `json:"point_membership"`
 }
 
 type HighProbArea struct {
@@ -56,12 +72,38 @@ type HighProbArea struct {
 }
 
 type SiteSelectionFactor struct {
-	ID           int     `json:"id"`
-	FactorName   string  `json:"factor_name"`
-	Contribution float64 `json:"contribution"`
-	PValue       float64 `json:"p_value"`
-	OddsRatio    float64 `json:"odds_ratio"`
-	Method       string  `json:"method"`
+	ID             int     `json:"id"`
+	FactorName     string  `json:"factor_name"`
+	Contribution   float64 `json:"contribution"`
+	PValue         float64 `json:"p_value"`
+	OddsRatio      float64 `json:"odds_ratio"`
+	Method         string  `json:"method"`
+	StdErr         float64 `json:"std_err"`
+	CI95Lower      float64 `json:"ci95_lower"`
+	CI95Upper      float64 `json:"ci95_upper"`
+	Significance   bool    `json:"significance"`
+	StabilityScore float64 `json:"stability_score"`
+}
+
+type EnhancedLRResult struct {
+	Intercept     float64   `json:"intercept"`
+	Coefficients  []float64 `json:"coefficients"`
+	FactorNames   []string  `json:"factor_names"`
+	Contributions []float64 `json:"contributions"`
+	PValues       []float64 `json:"p_values"`
+	OddsRatios    []float64 `json:"odds_ratios"`
+	StdErrs       []float64 `json:"std_errs"`
+	CI95Lowers    []float64 `json:"ci95_lowers"`
+	CI95Uppers    []float64 `json:"ci95_uppers"`
+	Stability     []float64 `json:"stability"`
+	BootstrapRuns int       `json:"bootstrap_runs"`
+	AUC           float64   `json:"auc"`
+	Accuracy      float64   `json:"accuracy"`
+	Precision     float64   `json:"precision"`
+	Recall        float64   `json:"recall"`
+	F1Score       float64   `json:"f1_score"`
+	BackgroundType string   `json:"background_type"`
+	NumBackground int       `json:"num_background"`
 }
 
 type ProfilePoint struct {

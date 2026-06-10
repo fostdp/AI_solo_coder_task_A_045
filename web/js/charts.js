@@ -1,6 +1,55 @@
 const Charts = (function() {
 
+    function isOffscreenCanvasSupported() {
+        return typeof OffscreenCanvas !== 'undefined';
+    }
+
+    function createOffscreenCanvas(w, h) {
+        if (isOffscreenCanvasSupported()) {
+            return new OffscreenCanvas(w, h);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        return canvas;
+    }
+
+    function throttle(func, wait) {
+        let timeout = null;
+        let lastArgs = null;
+        return function(...args) {
+            lastArgs = args;
+            if (!timeout) {
+                timeout = setTimeout(() => {
+                    func.apply(this, lastArgs);
+                    timeout = null;
+                }, wait);
+            }
+        };
+    }
+
+    const pendingRenders = new Map();
+    function requestEfficientRender(canvas, renderFn) {
+        const key = canvas;
+        if (pendingRenders.has(key)) {
+            pendingRenders.set(key, renderFn);
+            return;
+        }
+        pendingRenders.set(key, renderFn);
+        requestAnimationFrame(() => {
+            const fn = pendingRenders.get(key);
+            pendingRenders.delete(key);
+            if (fn) fn();
+        });
+    }
+
     function drawBarChart(canvas, data, colorFn) {
+        requestEfficientRender(canvas, () => {
+            _drawBarChart(canvas, data, colorFn);
+        });
+    }
+
+    function _drawBarChart(canvas, data, colorFn) {
         const ctx = canvas.getContext('2d');
         const w = canvas.width;
         const h = canvas.height;
@@ -62,6 +111,12 @@ const Charts = (function() {
     }
 
     function drawPieChart(canvas, data) {
+        requestEfficientRender(canvas, () => {
+            _drawPieChart(canvas, data);
+        });
+    }
+
+    function _drawPieChart(canvas, data) {
         const ctx = canvas.getContext('2d');
         const w = canvas.width;
         const h = canvas.height;
@@ -119,10 +174,55 @@ const Charts = (function() {
         });
     }
 
-    function drawTerrainProfile(canvas, profile) {
+    let offscreenCanvas = null;
+    let offscreenCtx = null;
+    let lastProfileHash = '';
+
+    function hashProfile(profile) {
+        if (!profile || !profile.points) return '';
+        return `${profile.min_elev}_${profile.max_elev}_${profile.points.length}_${profile.points[0]?.elevation}`;
+    }
+
+    function drawTerrainProfile(canvas, profile, options = {}) {
+        const useOffscreen = options.useOffscreen !== false && isOffscreenCanvasSupported();
+        const hash = hashProfile(profile);
+
+        requestEfficientRender(canvas, () => {
+            if (useOffscreen) {
+                _drawTerrainProfileOffscreen(canvas, profile, hash);
+            } else {
+                _drawTerrainProfileDirect(canvas, profile);
+            }
+        });
+    }
+
+    function _drawTerrainProfileOffscreen(canvas, profile, hash) {
+        const w = canvas.width;
+        const h = canvas.height;
+
+        if (!offscreenCanvas || offscreenCanvas.width !== w || offscreenCanvas.height !== h) {
+            offscreenCanvas = createOffscreenCanvas(w, h);
+            offscreenCtx = offscreenCanvas.getContext('2d');
+        }
+
+        if (lastProfileHash !== hash) {
+            _drawTerrainProfileToContext(offscreenCtx, w, h, profile);
+            lastProfileHash = hash;
+        }
+
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(offscreenCanvas, 0, 0);
+    }
+
+    function _drawTerrainProfileDirect(canvas, profile) {
         const ctx = canvas.getContext('2d');
         const w = canvas.width;
         const h = canvas.height;
+        _drawTerrainProfileToContext(ctx, w, h, profile);
+    }
+
+    function _drawTerrainProfileToContext(ctx, w, h, profile) {
         const padding = { top: 15, right: 15, bottom: 30, left: 45 };
         const chartW = w - padding.left - padding.right;
         const chartH = h - padding.top - padding.bottom;
@@ -224,6 +324,25 @@ const Charts = (function() {
         ctx.fillText(`平均: ${Math.round(profile.avg_elev)}m`, padding.left + chartW, 12);
     }
 
+    function drawUncertaintyRing(ctx, x, y, baseRadius, uncertainty, color) {
+        const alpha = Math.min(0.8, uncertainty * 0.8 + 0.2);
+        ctx.strokeStyle = `rgba(255, 100, 100, ${alpha})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(x, y, baseRadius * (1 + uncertainty), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, baseRadius * (1 + uncertainty));
+        grad.addColorStop(0, 'rgba(212, 175, 55, 0.3)');
+        grad.addColorStop(1, 'rgba(255, 100, 100, 0.1)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, baseRadius * (1 + uncertainty), 0, Math.PI * 2);
+        ctx.fill();
+    }
+
     function shadeColor(color, percent) {
         const num = parseInt(color.replace('#', ''), 16);
         const amt = Math.round(2.55 * percent);
@@ -238,9 +357,19 @@ const Charts = (function() {
         ).toString(16).slice(1);
     }
 
+    function clearOffscreenCache() {
+        offscreenCanvas = null;
+        offscreenCtx = null;
+        lastProfileHash = '';
+    }
+
     return {
         drawBarChart,
         drawPieChart,
-        drawTerrainProfile
+        drawTerrainProfile,
+        drawUncertaintyRing,
+        isOffscreenCanvasSupported,
+        clearOffscreenCache,
+        throttle
     };
 })();

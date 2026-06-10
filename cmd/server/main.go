@@ -24,8 +24,10 @@ func main() {
 		api.GET("/terrain_profile", handlers.GetTerrainProfile)
 		api.GET("/accessibility/:id", handlers.GetAccessibility)
 		api.GET("/site_selection_factors", handlers.GetSiteSelectionFactors)
+		api.GET("/enhanced_lr", handlers.GetEnhancedLR)
 		api.GET("/high_prob_areas", handlers.GetHighProbAreas)
 		api.GET("/military_regions", handlers.GetMilitaryRegions)
+		api.GET("/fuzzy_cluster", handlers.GetFuzzyCluster)
 		api.GET("/stats", handlers.GetStats)
 	}
 
