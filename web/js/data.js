@@ -1,11 +1,13 @@
 const AppData = (function() {
     let battlefields = [];
+    let filteredBattlefields = [];
     let roads = [];
     let rivers = [];
     let demGrid = [];
     let regions = [];
     let highProbAreas = [];
     let factors = [];
+    let state = {};
 
     const ERA_COLORS = {
         '春秋战国': '#c0392b',
@@ -157,16 +159,20 @@ const AppData = (function() {
     }
 
     function getBattlefields() { return battlefields; }
+    function getFilteredBattlefields() { return filteredBattlefields.length ? filteredBattlefields : battlefields; }
     function getRoads() { return roads; }
     function getRivers() { return rivers; }
     function getDEM() { return demGrid; }
     function getRegions() { return regions; }
     function getHighProbAreas() { return highProbAreas; }
     function getFactors() { return factors; }
+    function getState() { return state; }
 
     function setRegions(r) { regions = r; }
     function setHighProbAreas(a) { highProbAreas = a; }
     function setFactors(f) { factors = f; }
+    function setState(s) { state = Object.assign(state, s || {}); }
+    function setFiltered(f) { filteredBattlefields = f || []; }
 
     function getEraColor(era) {
         return ERA_COLORS[era] || '#888888';
@@ -191,15 +197,19 @@ const AppData = (function() {
     return {
         loadAll,
         getBattlefields,
+        getFilteredBattlefields,
         getRoads,
         getRivers,
         getDEM,
         getRegions,
         getHighProbAreas,
         getFactors,
+        getState,
         setRegions,
         setHighProbAreas,
         setFactors,
+        setState,
+        setFiltered,
         getEraColor,
         getTerrainColor,
         getTroopSize,
