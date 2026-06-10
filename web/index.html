@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>古代战场遗址空间分布与军事地理分析系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+    <header class="top-bar">
+        <div class="logo">
+            <span class="logo-icon">⚔</span>
+            <h1>古代战场遗址空间分布与军事地理分析系统</h1>
+        </div>
+        <div class="header-stats">
+            <div class="stat-item">
+                <span class="stat-label">战场总数</span>
+                <span class="stat-value" id="stat-total">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">军事分区</span>
+                <span class="stat-value" id="stat-regions">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">高概率区</span>
+                <span class="stat-value" id="stat-highprob">0</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <h3>图层控制</h3>
+                <label class="toggle-label">
+                    <input type="checkbox" id="toggle-battlefields" checked />
+                    <span>战场遗址</span>
+                </label>
+                <label class="toggle-label">
+                    <input type="checkbox" id="toggle-roads" checked />
+                    <span>古代道路</span>
+                </label>
+                <label class="toggle-label">
+                    <input type="checkbox" id="toggle-rivers" checked />
+                    <span>河流水系</span>
+                </label>
+                <label class="toggle-label">
+                    <input type="checkbox" id="toggle-regions" />
+                    <span>军事地理分区</span>
+                </label>
+                <label class="toggle-label">
+                    <input type="checkbox" id="toggle-highprob" />
+                    <span>高概率战场区域</span>
+                </label>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>年代筛选</h3>
+                <select id="filter-era">
+                    <option value="">全部年代</option>
+                    <option value="春秋战国">春秋战国</option>
+                    <option value="秦汉">秦汉</option>
+                    <option value="三国两晋南北朝">三国两晋南北朝</option>
+                    <option value="隋唐五代">隋唐五代</option>
+                    <option value="宋辽金元">宋辽金元</option>
+                    <option value="明清">明清</option>
+                </select>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>地形筛选</h3>
+                <select id="filter-terrain">
+                    <option value="">全部地形</option>
+                    <option value="山地">山地</option>
+                    <option value="平原">平原</option>
+                    <option value="河谷">河谷</option>
+                    <option value="关隘">关隘</option>
+                </select>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>兵力筛选</h3>
+                <div class="slider-row">
+                    <label>最小兵力:</label>
+                    <input type="range" id="filter-troops" min="0" max="1000000" step="10000" value="0" />
+                    <span id="troops-value">0</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>年代图例</h3>
+                <div class="legend" id="era-legend"></div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>兵力图例</h3>
+                <div class="legend" id="troops-legend"></div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>统计图表</h3>
+                <div class="chart-wrapper">
+                    <h4>按年代分布</h4>
+                    <canvas id="chart-era" width="240" height="160"></canvas>
+                </div>
+                <div class="chart-wrapper">
+                    <h4>按地形分布</h4>
+                    <canvas id="chart-terrain" width="240" height="160"></canvas>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>选址影响因素</h3>
+                <div id="factor-analysis" class="factor-list">
+                    <div class="loading">分析中...</div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <button id="btn-analyze" class="btn-primary">运行军事地理分区</button>
+                <button id="btn-highprob" class="btn-secondary">分析高概率区域</button>
+            </div>
+        </aside>
+
+        <main class="map-container">
+            <div id="map"></div>
+            <canvas id="battlefield-canvas" class="overlay-canvas"></canvas>
+
+            <div id="battlefield-panel" class="detail-panel hidden">
+                <div class="panel-header">
+                    <h3 id="panel-title">战场详情</h3>
+                    <button class="panel-close" id="panel-close">&times;</button>
+                </div>
+                <div class="panel-content">
+                    <div class="detail-grid">
+                        <div class="detail-item"><span class="label">战役名称:</span><span id="detail-name">-</span></div>
+                        <div class="detail-item"><span class="label">年代:</span><span id="detail-era">-</span></div>
+                        <div class="detail-item"><span class="label">朝代:</span><span id="detail-dynasty">-</span></div>
+                        <div class="detail-item"><span class="label">交战双方:</span><span id="detail-belligerents">-</span></div>
+                        <div class="detail-item"><span class="label">兵力规模:</span><span id="detail-troops">-</span></div>
+                        <div class="detail-item"><span class="label">地形类型:</span><span id="detail-terrain">-</span></div>
+                        <div class="detail-item"><span class="label">海拔高程:</span><span id="detail-elevation">-</span></div>
+                        <div class="detail-item"><span class="label">战役结果:</span><span id="detail-result">-</span></div>
+                    </div>
+
+                    <div class="panel-section">
+                        <h4>周边地形剖面图</h4>
+                        <canvas id="profile-canvas" width="480" height="140"></canvas>
+                    </div>
+
+                    <div class="panel-section">
+                        <h4>交通可达性分析</h4>
+                        <div id="accessibility-info" class="accessibility-grid"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
